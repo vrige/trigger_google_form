@@ -8,25 +8,71 @@ function onFormSubmit(e) {
      from E to I possible lessons (assumption that there may be max 5 lessons)
   */
   // assumption: no duplicates in the first column (otherwise formRanger doesn't work)
-  var name_list_student_in_the_column = "Lista Studenti";
-  var duration_column = "Durata";
-  var date_of_the_lesson_column = "Data del corso";
+  // assumption: when the names of the students are put in the riht column for the form,
+  //             they must have a copy of the format of column A1 
+  // assumption: the list of students must contain the keywords "Studenti"
+  // assumption: the list of extra students is "Studenti extra"
+  // assumption: the list of dates must contain the following keywork "Data della lezione"
+  // assumption: there must one and only one column of students not empty (skip logic)
+  // assumption: there must one and only one column of dates not empty (skip logic)
+
+  // First of all, we need to filter the skip logic of the form
+  // We need to find the column with the selected students using as keyword "Studenti" and then 
+  // check which column is not empty
+  var name_list_student_in_the_column;
+  var searchString = "Studenti";
+  var fieldNames = Object.keys(e.namedValues);
+  for (var i = 0; i < fieldNames.length; i++){
+    if (fieldNames[i].includes(searchString) && fieldNames[i].trim() !== "Studenti extra"){
+      if (e.namedValues[fieldNames[i]][0] !== ""){
+        name_list_student_in_the_column = fieldNames[i];
+        console.log("name_list_student_in_the_column: ", fieldNames[i], " i: ", i );
+      }
+    }
+  }
   var names = e.namedValues[name_list_student_in_the_column][0].split(",");
 
-  var name_of_the_course = e.values[1];
-  var duration = e.namedValues[duration_column][0];
+  // Now, we need to do the same with the column of the dates using as keyword "Data della lezione" and then 
+  // check which column is not empty
+  var date_of_the_lesson_column;
+  var searchString = "Data della lezione";
+  for (var i = 0; i < fieldNames.length; i++){
+    if (fieldNames[i].includes(searchString) && e.namedValues[fieldNames[i]][0] !== ""){
+      date_of_the_lesson_column = fieldNames[i];
+      console.log("date_column: ", fieldNames[i], " i: ", i );
+    }
+  }
   var date_of_the_lesson = e.namedValues[date_of_the_lesson_column][0].trim();
+
+  // Retrieve the name of the professor
+  var professor_column;
+  var searchString = "Nome e Cognome docente";
+  for (var i = 0; i < fieldNames.length; i++){
+    if (fieldNames[i].includes(searchString) && e.namedValues[fieldNames[i]][0] !== ""){
+      professor_column = fieldNames[i];
+      console.log("professor_column: ", fieldNames[i], " i: ", i );
+    }
+  }
+  var professor = e.namedValues[professor_column][0].trim();
+
+  var duration_column = "Durata";
+  var duration = e.namedValues[duration_column][0];
+
+  var name_of_the_course = e.values[1];
 
   console.log("name_of_the_course: ", name_of_the_course);
   console.log("duration: ", duration);
   console.log("date_of_the_lesson: ", date_of_the_lesson);
+  console.log("professor: ", professor);
   console.log(names);
 
+  
   var sheet_name = name_of_the_course;
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   // assumption: same name between pages and subjects
   var sheet_subject = ss.getSheetByName(sheet_name);
+  
 
   // assumption: always look for the matching string in the first column
   var columnToSearch = 1;
@@ -59,7 +105,7 @@ function onFormSubmit(e) {
   for (var i = 0; i < institute_row.length; i++) {
     if (institute_unique.indexOf(institute_row[i]) == -1) {
       institute_unique.push(institute_row[i]);
-      console.log("inside: ", institute_row[i]);
+      console.log("istitute: ", institute_row[i]);
     }
   }
   
@@ -137,14 +183,75 @@ function onFormSubmit(e) {
     cell.setValue(duration);
   }
   
+  //Now we need to add the extra students as last row in the dedicated page
+  // assumption: page for the extra students "Studenti extra"
+  // assumption: page for the name of professor must contain the keyword "Nome e Cognome docente"
+  var studenti_extra_column = "Studenti extra";
+  var studenti_extra = e.namedValues[studenti_extra_column][0];
+  console.log("studenti_extra: ", studenti_extra);
+  if (studenti_extra.trim().length !== 0){
+    var sheet_extraStudents = ss.getSheetByName("Studenti extra");
+    var lastRow = sheet_extraStudents.getLastRow();
+    var newRow = lastRow + 1;
+    var cell = sheet_extraStudents.getRange(newRow, 1); 
+    cell.setValue(name_of_the_course);
+    cell = sheet_extraStudents.getRange(newRow, 2); 
+    cell.setValue(professor);
+    cell = sheet_extraStudents.getRange(newRow, 3); 
+    cell.setValue(date_of_the_lesson);
+    cell = sheet_extraStudents.getRange(newRow, 4); 
+    cell.setValue(duration);
+    cell = sheet_extraStudents.getRange(newRow, 5); 
+    cell.setValue(studenti_extra);
+  }
+  
+  // assumption: the name of the page with the lessons is "Riassunto lezioni " + name_of_the_subject
+  var subject_lessons_page = "Riassunto lezioni " + name_of_the_course;
+  var sheet_subject_lesson = ss.getSheetByName(subject_lessons_page);
+
+  // assumption: fixed name for some columns: "Codice Fiscale Docente", "Settore Lavorativo Docente", "Docente Esterno"
+  //             and "dottorando"
+  // update the information about codice fiscale, settore lavorativo and docente esterno if they are not already 
+  // present in the excel
+  var professors_column = trimmingArray(sheet_subject_lesson.getRange("A1:A" + sheet_subject_lesson.getLastRow()).getValues());
+  var professor_row = professors_column.indexOf(professor) + 1;
+  console.log("professor_row: ", professor_row);
+  if ( professor_row !== -1){
+    var cell = sheet_subject_lesson.getRange(professor_row, 4); 
+    console.log("professor_codice_fiscale: ", cell.getValue());
+    if (cell.getValue() === ""){
+      var codice_fiscale_column = "Codice Fiscale Docente";
+      var codice_fiscale = e.namedValues[codice_fiscale_column][0];
+      cell.setValue(codice_fiscale); 
+    }
+    var cell = sheet_subject_lesson.getRange(professor_row, 5); 
+    console.log("professor_settore_lavorativo: ", cell.getValue());
+    if (cell.getValue() === ""){
+      var settore_lavorativo_column = "Settore Lavorativo Docente";
+      var settore_lavorativo = e.namedValues[settore_lavorativo_column][0];
+      cell.setValue(settore_lavorativo); 
+    }
+    var cell = sheet_subject_lesson.getRange(professor_row, 6); 
+    console.log("professor_docente_esterno: ", cell.getValue());
+    if (cell.getValue() === ""){
+      var docente_esterno_column = "Docente Esterno";
+      var docente_esterno = e.namedValues[docente_esterno_column][0];
+      cell.setValue(docente_esterno); 
+    }
+    var cell = sheet_subject_lesson.getRange(professor_row, 7); 
+    console.log("professor_dottorando: ", cell.getValue());
+    if (cell.getValue() === ""){
+      var dottorando_column = "Dottorando";
+      var dottorando = e.namedValues[dottorando_column][0];
+      cell.setValue(dottorando); 
+    }
+  }
+
 }
 
 function createDateFromFormat(dateString) {
   const [day, month, year] = dateString.split('/');
-
-  // Create the Date object
   const date = new Date(`${month}/${day}/${year}`);
-
   return date.toString().trim();
 }
 
@@ -153,3 +260,4 @@ function trimmingArray(values){
     return row.toString().trim();
   });
 }
+
