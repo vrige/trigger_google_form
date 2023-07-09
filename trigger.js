@@ -1,117 +1,267 @@
 function onFormSubmit(e) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // get the tab "Frequenze"
+  var sheet_frequency_obj = getSheetByItsName(ss, "Frequenze");
+  var sheet_frequency = sheet_frequency_obj["sheet"];
 
   // get the name of the subject 
   var name_of_the_course = e.values[1];
 
   // get the page of the subject
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet_subject = ss.getSheetByName(name_of_the_course);
+  var sheet_subject_obj = getSheetByItsName(ss, name_of_the_course);
+  var sheet_subject = sheet_subject_obj["sheet"];
+
+  // get the page "Riassunto lezioni " of a specific subject
+  var subject_lessons_page = "Riassunto lezioni " + name_of_the_course;
+  var sheet_subject_lesson_obj = getSheetByItsName(ss, subject_lessons_page);
+  var sheet_subject_lesson = sheet_subject_lesson_obj["sheet"];
+
+  // get the page for "Studenti extra"
+  var sheet_extraStudents_obj = getSheetByItsName(ss, "Studenti extra");
+  var sheet_extraStudents = sheet_extraStudents_obj["sheet"];
+
+  // copy new row in the "Frequenze" tab
+  // update it even in case of error
+  var row_sheet = updateMainTab(e, sheet, sheet_frequency);
   
-  console.log("name_of_the_course: ", name_of_the_course);
+  // first layer of error handling: checking that the useful following pages exist:
+  // "Studenti extra", name_of_the_course, "Riassunto lezioni " + name_of_the_course, "Frequenze"
+  if( sheet_frequency_obj["abort"] === false && sheet_subject_obj["abort"] === false &&
+      sheet_subject_lesson_obj["abort"] === false && sheet_extraStudents_obj["abort"] === false){
+    
+    console.log("The 4 useful pages exist")   
 
+    // get the professor name and surname
+    var professor_obj = getProfessor(e);  
+    var professor = professor_obj["professor"];
 
-  // get the professor
-  // if there are no professor mentioned in the form, then the form will be aborted
-  var prof_form = getProfessor(e);
-  if (prof_form["abort"] === true){
-    // FIX-ME remove the row without professor and move it to the trouble page
-    // abort the rest of the code
-    console.log("form is aborted");
-  }
+    // get the list of students 
+    var names_obj = getDataFromColumn(e, "Studenti", "Studenti extra");
+    var names = names_obj["values"];
+
+    // get the date of the lesson
+    var date_of_the_lesson_obj = getDataFromColumn(e, "Data della lezione");
+    var date_of_the_lesson = date_of_the_lesson_obj["values"];
+
+    // get the duration of the lesson
+    var duration_obj = getDataFromColumn(e, "Durata della lezione");
+    var duration = duration_obj["values"];
+
+    // second layer of error handling: checking form columns
+    if(professor_obj["abort"] === false && names_obj["abort"] === false &&
+    date_of_the_lesson_obj["abort"] === false && duration_obj["abort"] === false){
+
+      console.log("All the necessary form columns are there")
+
+      // save the lines with the students attending the course
+      var rows = getLines(names, sheet_subject);
+
+      // save the institues involved in the form
+      var institues = institutesInvolved(sheet_subject, rows);
+      var institute_row = institues[0];
+      var institute_unique = institues[1];
+
+      // save the line numbers with the date of each institute
+      var data_rows = dateRow(sheet_subject, institute_unique);
+
+      // save the column for each student
+      var number_columns = getColumnDate(sheet_subject, date_of_the_lesson, institute_unique, data_rows);
+
+      // error handling: in case of error don't update any sheets
+      if (professor_obj["abort"] === false){
+        
+        console.log("form is valid");
+
+        // update professors' list in case the are no errors
+        // if there are no professor mentioned in the form, then the form will be aborted
+        if (professor === "Altro"){
+          console.log("professor not in the list");
+          var missing_professor_name = professor_obj["missing_professor_name"];
+          var missing_professor_surname = professor_obj["missing_professor_surname"];
+          
+          addMissingProfessor(sheet_subject_lesson, professor, missing_professor_name, missing_professor_surname);
+          professor = missing_professor_name + " " + missing_professor_surname;
+        }
+
+        // update professor info if they are any in the form
+        updateProfessorData(e, sheet_subject_lesson, professor);
+
+        // update the page of the students with their attendence
+        updateStudents(sheet_subject, duration, rows, institute_unique, institute_row, number_columns);
+
+        // update "Studenti Extra" page in case of extra students
+        updateExtraStudents(e, sheet_extraStudents, name_of_the_course, professor, date_of_the_lesson, duration)
+        
+      }else{
+        console.log("form is aborted");
+      }
+
+    }else{
+      console.log("There was some problems with the form columns");
+
+      // elaborate message error for the second layer: missing form columns
+      var error = "";
+      var solution = "";
+
+      if(professor_obj["abort"] === true){
+        error = error + professor_obj["error"] + "\n";
+        solution = solution + "Controllare che vi sia il nome e cognome del professore nel form. Potrebbe essere" + 
+                  " un errore del professore che ha compilato il form senza il nome e/o il cognome.\n";
+      }
+      if(names_obj["abort"] === true){
+        error = error + names_obj["error"] + "\n";
+        solution = solution + "Controllare che esista una colonna del form che contenga la parola \'" + 
+        names_obj["name"] + "\' e che il nome sia corretto.\n";
+      }
+      if(date_of_the_lesson_obj["abort"] === true){
+        error = error + date_of_the_lesson_obj["error"] + "\n";
+        solution = solution + "Controllare che esista una colonna del form che contenga la parola \'" + 
+        date_of_the_lesson_obj["name"] + "\' e che il nome sia corretto.\n";
+      }
+      if(duration_obj["abort"] === true){
+        error = error + duration_obj["error"] + "\n";
+        solution = solution + "Controllare che esista una colonna del form che contenga la parola \'" + duration_obj["name"] + "\'  e che il nome sia corretto.\n";
+      }
+      solution = solution + "Per controllare che il nome sia correto andare sulla corrispondente form e controllare" + 
+                " che vi sia una domanda con la/e parole chiavi precedentemente specificate.";
+    
+      console.log(error)
+      console.log(solution)
+
+      updateState(sheet_frequency_obj, row_sheet, error, solution);
+    }
+    
+  }else{
+    console.log("At least one the four useful pages doesn't exist. The form is aborted");
+
+    // elaborate message error for the first layer on missing sheet(s)
+    var error = "";
+    var solution = "";
+    if(sheet_frequency_obj["abort"] === true){
+      error = error + sheet_frequency_obj["error"] + "\n";
+      solution = solution + "Controllare che esista il foglio \'" + sheet_subject_obj["name"]  + 
+                 "\' e che il nome sia corretto.\n";
+    }
+    if(sheet_subject_obj["abort"] === true){
+      error = error + sheet_subject_obj["error"] + "\n";
+      solution = solution + "Controllare che esista il foglio \'" + sheet_subject_obj["name"] + 
+                "\' e che il nome sia corretto.\n";
+    }
+    if(sheet_subject_lesson_obj["abort"] === true){
+      error = error + sheet_subject_lesson_obj["error"] + "\n";
+      solution = solution + "Controllare che esista il foglio \'" + sheet_subject_lesson_obj["name"] + 
+                "\' e che il nome sia corretto.\n";
+    }
+    if(sheet_extraStudents_obj["abort"] === true){
+      error = error + sheet_extraStudents_obj["error"] + "\n";
+      solution = solution + "Controllare che esista il foglio \'" + sheet_extraStudents_obj["name"] + 
+                "\' e che il nome sia corretto.\n";
+    }
+    solution = solution + "Per controllare che il nome sia correto andare sul foglio \'Lista Materie\'" +
+              " e fare un copia e incolla dalla lista."
   
-  var professor = prof_form["professor"];
+    console.log(error)
+    console.log(solution)
 
-  if (professor === "Altro"){
-    console.log("professor not in the list");
-    var missing_professor_name = prof_form["missing_professor_name"];
-    var missing_professor_surname = prof_form["missing_professor_surname"];
-     // add missing professor
-    addMissingProfessor(ss, name_of_the_course, professor, missing_professor_name, missing_professor_surname);
-    professor = prof_form["missing_professor_name"] + " " + prof_form["missing_professor_surname"];
+    updateState(sheet_frequency_obj, row_sheet, error, solution);
   }
+}
 
-  // update professor info if they are any in the form
-  updateProfessorData(e, ss, name_of_the_course, professor);
+// assumption: the state is in column P (number 16), while the error in column Q (number 17)
+//             and the solutions are in column R
+// update status, error and solution columns in the "Frequenze" sheet
+function updateState(sheet_frequency_obj, row_sheet, error, solution){
+  if(sheet_frequency_obj["abort"] !== true){
+    sheet_frequency = sheet_frequency_obj["sheet"];
+    var range = sheet_frequency.getRange(row_sheet, 16, 1, 1);
+    range.setValue("Form aborted");
+    range.setBackground("#FF0000"); // set background color RED
 
-  // get the list of students 
-  var names = getStudentList(e);
-
-  // get the date of the lesson
-  var date_of_the_lesson = getDate(e);
-
-  // get the duration of the lesson
-  var duration = getDuration(e);
-
-  // save the lines with the students attending the course
-  var rows = getLines(names, sheet_subject);
-
-  // save the institues involved in the form
-  var institues = institutesInvolved(sheet_subject, rows);
-  var institute_row = institues[0];
-  var institute_unique = institues[1];
-
-  // save the line numbers with the date of each institute
-  var data_rows = dateRow(sheet_subject, institute_unique);
-
-  // save the column for each student
-  var number_columns = getColumnDate(sheet_subject, date_of_the_lesson, institute_unique, data_rows);
-
-  // update the page of the students with their attendence
-  updateStudents(sheet_subject, duration, rows, institute_unique, institute_row, number_columns);
-
-  // update "Studenti Extra" page in case of extra students
-  updateExtraStudents(e, ss, name_of_the_course, professor, date_of_the_lesson, duration)
-
+    var range = sheet_frequency.getRange(row_sheet, 17, 1, 1);
+    range.setValue(error);
+  
+    var range = sheet_frequency.getRange(row_sheet, 18, 1, 1);
+    range.setValue(solution);
+  }else{
+    console.log("Cannot update the status, error and solution becasue the sheet \'Frequenze\' doesn't exist")
+  }
 }
 
 
-// list of students attending the lesson
-function getStudentList(e){
-  var name_list_student_in_the_column;
-  var searchString = "Studenti";
+// get the sheet with the name specified in "name_of_the_sheet"
+function getSheetByItsName(ss, name_of_the_sheet){
+  var abort = false;
+  var error = "";
+  subject_sheet = ss.getSheetByName(name_of_the_sheet);
+  
+  if (subject_sheet === null){
+    abort = true;
+    error = "Cannot find the sheet: " + name_of_the_sheet;
+    console.log(error);
+  }else{
+    console.log("Sheet: " + name_of_the_sheet + " found");
+  }
+
+  return {abort: abort, error: error, name: name_of_the_sheet, sheet: subject_sheet};
+}
+
+// copy new row in the "Frequenze" tab
+function updateMainTab(e, sheet, targetSheet){
+  var targetRange = 1;
+  var new_row = e.range.getRow();
+
+  targetRange = targetSheet.getRange(targetSheet.getLastRow() + 1, 1, 1, sheet.getLastColumn());
+  sheet.getRange(new_row, 1, 1, sheet.getLastColumn()).copyTo(targetRange);
+
+  return targetSheet.getLastRow();
+}
+
+// get the column with the word specified in "searchString". If you need to discriminate two or more columns,
+// it is possible to specified some words to avoid in in the parameter "avoid"
+function getDataFromColumn(e, searchString, avoid="-"){
+  var name = 0;
+  var abort = false;
+  var error = "";
+  var values = "";
   // e.namedValues is a dict of each column with the argument inside
   // Object.keys(e.namedValues) extract just the key parts
   var fieldNames = Object.keys(e.namedValues);
+
+  // look for the column with the searchStrign inside, but not avoid
   for (var i = 0; i < fieldNames.length; i++){
-    if (fieldNames[i].includes(searchString) && fieldNames[i].trim() !== "Studenti extra"){
+    if (fieldNames[i].includes(searchString) && fieldNames[i].trim() !== avoid){
       if (e.namedValues[fieldNames[i]][0] !== ""){
-        name_list_student_in_the_column = fieldNames[i];
-        console.log("name_list_student_in_the_column: ", fieldNames[i], " i: ", i );
+        name = fieldNames[i];
+        //console.log("name: ", fieldNames[i], " i: ", i );
         break;
       }
     }
   }
-  var names = e.namedValues[name_list_student_in_the_column][0].split(",");
-  return names;
-}
 
-
-function getDate(e){
-  // Now, we need to do the same with the column of the dates using as keyword "Data della lezione" and then 
-  // check which column is not empty
-  var date_of_the_lesson_column;
-  var searchString = "Data della lezione";
-  var fieldNames = Object.keys(e.namedValues);
-  for (var i = 0; i < fieldNames.length; i++){
-    if (fieldNames[i].includes(searchString) && e.namedValues[fieldNames[i]][0] !== ""){
-      date_of_the_lesson_column = fieldNames[i];
-      console.log("date_column: ", fieldNames[i], " i: ", i );
-      break;
+  // check if the column was found
+  if (name === 0){
+    abort = true;
+    error = "Cannot find the column with the words \'"+ searchString + "\'";
+    console.log(error);
+  }else{
+    values = e.namedValues[name][0]; 
+    console.log("Found column with the words \'"+ searchString + "\' in: ", values);
+    if(searchString === "Studenti"){  // in case of the students, split the string in a list of students
+      values = values.split(",");
+      //console.log("students: "+  values);
+    }else{
+      values = values.trim();
     }
   }
-  var date_of_the_lesson = e.namedValues[date_of_the_lesson_column][0].trim();
-  return date_of_the_lesson;
+ 
+  return {abort : abort, error: error, name: searchString, values: values};
 }
 
-function getDuration(e){
-  var duration_column = "Durata della lezione";
-  var duration = e.namedValues[duration_column][0];
-  return duration;
-}
-
+// Retrieve the name and surname of the professor
 function getProfessor(e){
-  // Retrieve the name of the professor
+  
   var professor_column;
   var searchString = "Nome e Cognome docente";
   var fieldNames = Object.keys(e.namedValues);
@@ -126,15 +276,24 @@ function getProfessor(e){
   
   var missing_professor_name = "";
   var missing_professor_surname = "";
+  var abort = false;
+  var error = "";
+  var check = false;
 
+  // in case no professor is selected from the list, then we need to retrieve his/her 
+  // name and surname from the optional fields
   if (professor === "Altro"){
 
     var searchString1 = "Nome docente mancante";
     var searchString2 = "Cognome docente mancante";
     var counter = 0;
+    check = true;
+    error = "check the new teacher added to the list"
 
+    // check name and surname of the new professor
     for (var i = 0; i < fieldNames.length; i++){
 
+      // check name 
       if (fieldNames[i].includes(searchString1) && e.namedValues[fieldNames[i]][0] !== ""){
         professor_column = fieldNames[i];
         console.log("missing_professor_column_name: ", fieldNames[i], " i: ", i );
@@ -142,6 +301,7 @@ function getProfessor(e){
         counter++;
       }
 
+      // check surname
       if (fieldNames[i].includes(searchString2) && e.namedValues[fieldNames[i]][0] !== ""){
         professor_column = fieldNames[i];
         console.log("missing_professor_column_surname: ", fieldNames[i], " i: ", i );
@@ -157,21 +317,19 @@ function getProfessor(e){
     if(missing_professor_name === "" || missing_professor_surname === ""){
 
       console.log("professor missing. Abort the form");
-      return {abort: true, professor: professor, missing_professor_name : missing_professor_name, missing_professor_surname: missing_professor_surname};
-
-    }else{
-      return {abort: false, professor: professor, missing_professor_name : missing_professor_name, missing_professor_surname: missing_professor_surname};
-    } 
+      missing_professor_name = missing_professor_name;
+      missing_professor_surname = missing_professor_surname;
+      abort = true;
+      check = false;
+      error = "The professor has selected \'Altro\' on the form, but she/he didn't fill the field"+ 
+              "about the name and/or surname";
+    }
   }
-  return {abort: false, professor: professor, missing_professor_name : missing_professor_name, missing_professor_surname: missing_professor_surname};
+  return {abort: abort, error: error, check_new_professor: check, professor: professor, missing_professor_name : missing_professor_name, missing_professor_surname: missing_professor_surname};
 }
 
 // add the missing professor to the right list
-function addMissingProfessor(ss, name_of_the_course, professor, name, surname){
-
-  // assumption: the name of the page with the lessons is "Riassunto lezioni " + name_of_the_subject
-  var subject_lessons_page = "Riassunto lezioni " + name_of_the_course;
-  var sheet_subject_lesson = ss.getSheetByName(subject_lessons_page);
+function addMissingProfessor(sheet_subject_lesson, professor, name, surname){
 
   var professors_column = trimmingArray(sheet_subject_lesson.getRange("A1:A" + sheet_subject_lesson.getLastRow()).getValues());
   var professor_row = professors_column.indexOf(professor) + 1;
@@ -197,11 +355,7 @@ function addMissingProfessor(ss, name_of_the_course, professor, name, surname){
   }
 }
 
-function updateProfessorData(e, ss, name_of_the_course, professor){
-
-  // assumption: the name of the page with the lessons is "Riassunto lezioni " + name_of_the_subject
-  var subject_lessons_page = "Riassunto lezioni " + name_of_the_course;
-  var sheet_subject_lesson = ss.getSheetByName(subject_lessons_page);
+function updateProfessorData(e,sheet_subject_lesson, professor){
 
   // assumption: fixed name for some columns: "Nome", "Cognome", "Codice Fiscale Docente", "Settore Lavorativo Docente",
   // "Docente Esterno" and "dottorando"
@@ -369,18 +523,21 @@ function updateStudents(sheet_subject, duration, row, institute_unique, institut
   }
 }
 
-function updateExtraStudents(e, ss, name_of_the_course, professor, date_of_the_lesson, duration){
+function updateExtraStudents(e, sheet_extraStudents, name_of_the_course, professor, date_of_the_lesson, duration){
+
   // Now we need to add the extra students as last row in the dedicated page
   // assumption: page for the extra students "Studenti extra"
   // assumption: page for the name of professor must contain the keyword "Nome e Cognome docente"
   var studenti_extra_column = "Studenti extra";
   var studenti_extra = e.namedValues[studenti_extra_column][0];
   console.log("studenti_extra: ", studenti_extra);
+
   if (studenti_extra.trim().length !== 0){
-    var sheet_extraStudents = ss.getSheetByName(studenti_extra_column);
+
     var lastRow = sheet_extraStudents.getLastRow();
     var newRow = lastRow + 1;
     var cell = sheet_extraStudents.getRange(newRow, 1); 
+
     cell.setValue(name_of_the_course);
     cell = sheet_extraStudents.getRange(newRow, 2); 
     cell.setValue(professor);
@@ -404,5 +561,3 @@ function trimmingArray(values){
     return row.toString().trim();
   });
 }
-
-
