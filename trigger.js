@@ -56,7 +56,8 @@ function onFormSubmit(e) {
       console.log("All the necessary form columns are there")
 
       // save the lines with the students attending the course
-      var rows = getLines(names, sheet_subject);
+      var rows_obj = getLines(names, sheet_subject);
+      var rows = rows_obj["values"];
 
       // save the institues involved in the form
       var institues = institutesInvolved(sheet_subject, rows);
@@ -64,14 +65,17 @@ function onFormSubmit(e) {
       var institute_unique = institues[1];
 
       // save the line numbers with the date of each institute
-      var data_rows = dateRow(sheet_subject, institute_unique);
+      var data_rows_obj = dateRow(sheet_subject, institute_unique);
+      var data_rows = data_rows_obj["values"];
 
       // save the column for each student
-      var number_columns = getColumnDate(sheet_subject, date_of_the_lesson, institute_unique, data_rows);
+      var number_columns_obj = getColumnDate(sheet_subject, date_of_the_lesson, institute_unique, data_rows);
+      var number_columns = number_columns_obj["values"];
 
-      // error handling: in case of error don't update any sheets
-      if (professor_obj["abort"] === false){
+      // third layer error handling: matching
+      if (rows_obj["abort"] === false && data_rows_obj["abort"] === false && number_columns_obj["abort"] === false){
         
+        // FIX-ME checking status!!!! 
         console.log("form is valid");
 
         // update professors' list in case the are no errors
@@ -95,7 +99,28 @@ function onFormSubmit(e) {
         updateExtraStudents(e, sheet_extraStudents, name_of_the_course, professor, date_of_the_lesson, duration)
         
       }else{
-        console.log("form is aborted");
+
+        // elaborate message error for the second layer: missing form columns
+        var error = "";
+        var solution = "";
+
+        if(rows_obj["abort"] === true){
+          error = error + rows_obj["error"] + "\n";
+          solution =  rows_obj["solution"] + "\n";
+        }
+        if(data_rows_obj["abort"] === true){
+          error = error + data_rows_obj["error"] + "\n";
+          solution = data_rows_obj["solution"] + "\n";
+        }
+        if(number_columns_obj["abort"] === true){
+          error = error + number_columns_obj["error"] + "\n";
+          solution = number_columns_obj["solution"] + "\n";
+        }
+      
+        console.log(error)
+        console.log(solution)
+
+        updateState(sheet_frequency_obj, row_sheet, error, solution);
       }
 
     }else{
@@ -403,36 +428,72 @@ function updateProfessorData(e,sheet_subject_lesson, professor){
 // save the lines with the students attending the course
 function getLines(names, sheet_subject){
   var row = [];
+  var missing = [];
+  var subject_lines = sheet_subject.getRange("A1:A" + sheet_subject.getLastRow()).getValues();
+  var flag;
+  var abort = false;
+  var error = "";
+  var solution = "";
+
+  // iterate over the student names from the form 
   for (var j = 0; j < names.length; j++){
     var searchString = names[j].trim();
     console.log("searchString: ", searchString);
-    var subject_lines = sheet_subject.getRange("A1:A" + sheet_subject.getLastRow()).getValues();
+    flag = false;
+
+    // iterate over all the student names attending that specific course
     for (var i = 0; i < subject_lines.length; i++) {
+
+      // collect the row number of the student
       if (subject_lines[i][0] === searchString) {
         console.log("searchString at line: ", i + 1);
         row.push(i+1);
+        flag = true;
+        break;
+      }
+      if( i === (subject_lines.length - 1) && flag === false){
+        missing.push(searchString);
         break;
       }
     }
   }
-  return row;
+
+  // check that all students were found 
+  if (missing.length > 0){
+    abort = true;
+    error = "Some students are missing. Here there is a list:\n";
+    for (var i = 0; i < missing.length; i++){
+      error = error + "- " + missing[i] + "\n";
+    }
+    solution = "Potrebbero mancare alcuni studenti nella lista oppure potrebbero essere stati trascritti male.\n" + 
+               "Provare a controllare la lista degli studenti e in particolare questi nomi:\n";
+    for (var i = 0; i < missing.length; i++){
+      solution = solution + "- " + missing[i] + "\n";
+    } 
+    console.log(error);
+  }
+
+  return {abort: abort, error: error, values: row, solution: solution};
 }
 
+// assumption: students from the same institute attending the same course will attend the lesson at the same time
+// assumption: students from the same school attending the same course are on the same table in the same page
+// get the name of the institute for each student 
 function institutesInvolved(sheet_subject, row){
-  // assumption: students from the same institute attending the same course will attend the lesson at the same time
-  // assumption: students from the same school attending the same course are on the same table in the same page
-  // get the name of the institute for each student 
   var institute_row = [];
   var columnToSearch_number = 2;
+
+  // get the school for each student
   for (var j = 0; j < row.length; j++){
     var cell = sheet_subject.getRange(row[j], columnToSearch_number).getValue(); 
     institute_row.push(cell);
   }
   institute_row = trimmingArray(institute_row);
+
   // get the names of the institutes
   var institute_unique = [];
   for (var i = 0; i < institute_row.length; i++) {
-    if (institute_unique.indexOf(institute_row[i]) == -1) {
+    if (institute_unique.indexOf(institute_row[i]) === -1) {
       institute_unique.push(institute_row[i]);
       console.log("istitute: ", institute_row[i]);
     }
@@ -440,42 +501,48 @@ function institutesInvolved(sheet_subject, row){
   return [institute_row, institute_unique];
 }
 
+// assumption: for each school table there must be a column starting with "studenti"
+// assumption: the first student should be not further than 5 cells from the cell "studenti"
+// assumption: between the first student and the cell "studenti", the cells must be empty
+// assumption: the row with the dates is always - 2 wrt the row with cell "studenti"
+// assumption: the school names on the second column must be all copies if they are refering to the same school
 function dateRow(sheet_subject, institute_unique){
-  // assumption: for each school table there must be a column starting with "studenti"
-  // assumption: the first student should be not further than 5 cells from the cell "studenti"
-  // assumption: between the first student and the cell "studenti", the cells must be empty
-  // assumption: the row with the dates is always - 2 wrt the row with cell "studenti"
+
   var columnToSearch = "B1:B";
   var searchString = "studenti";
   var count = 1;
   var data_lines = trimmingArray(sheet_subject.getRange(columnToSearch + sheet_subject.getLastRow()).getValues());
   var data_rows = [];
+  var abort = false;
+  var error = "";
+  var solution = "";
 
   // the idea is to search in the whole column B1 (the one with students' schools) for the "studenti" cells
   // when one is found, the algorithm check the following lines to see the school of the first student
-  // if there is an empty space the cell below is checked instead (mechanism iterated up to 5 times)
+  // if there is an empty space the cell below is checked instead (mechanism iterated up to 7 times)
   // In the end, we want to retrieve the row numbers of the lines with the dates for each school (in the list)
   for (var i = 0; i < data_lines.length; i++){  
     if (data_lines[i] === searchString) {
       count = 1;
       // check if there is a white space between the cell "studenti" and the first student
-      while (count < 5) {
-        var cellValue = data_lines[i + count];
-        if (cellValue === "") {
-          console.log("The cell is empty.");
+      while (count < 7) {
+
+        var cellValue = data_lines[i + count].trim();
+        var check = institute_unique.indexOf(cellValue);
+
+        if (cellValue === "" || check == -1 ) {
+          console.log("The cell is empty or no school is written inside: ", cellValue);
+
         } else {
-          console.log("The cell is not empty.");
-          
-          var val = institute_unique.indexOf(cellValue);
-          if(val != -1){
-            data_rows.push(i - 2);
-            console.log("Institute: ", cellValue, " at line: ", i - 2);
-            // we need also to put it in the correct order
-            institute_unique.splice(val,1);
-            institute_unique.push(cellValue);
-            break;
-          }
-          
+
+          console.log("The cell is not empty.");       
+          data_rows.push(i - 1);
+          console.log("Institute: ", cellValue, " at line: ", i - 1);
+
+          // we need also to put it in the correct order
+          institute_unique.splice(check,1);
+          institute_unique.push(cellValue);
+          console.log("Institutes order: ", institute_unique);
           break;
         }
         count++; 
@@ -485,33 +552,83 @@ function dateRow(sheet_subject, institute_unique){
       break;
     }
   }
-  return data_rows;
+
+  // check that all the institutes were found
+  if (data_rows.length !== institute_unique.length){
+     
+    if(data_rows.length > institute_unique.length){
+      error = "More institutes than the needed ones";
+      abort = true;
+      solution = "Provare a controllare che il nome delle scuole non sia stato scritto in maniera" + 
+                 "diversa per studenti che frequentano la stessa scuola";
+      console.log(error);
+    } else{
+      error = "Some institutes were not found";
+      abort = true;
+      solution = "Controllare che la keyword \'studenti\' sia presente all'altezza delle keywords \'nome\'"+
+                 " e \'cognome\' per ogni scuola.\n" + "Provare a controllare le seguenti scuole: \n";
+      for (var i = 0; i < institute_unique.length; i++){
+        solution = solution + "- " + institute_unique[i] + "\n";
+      }
+      console.log(error);
+    }
+  }
+
+  return {abort: abort, error: error, solution: solution, values: data_rows};
 }
 
-
+// assumption: the calendar data is always in the format gg/mm/aa in the google sheet
+// assumption: the column in which the data may be are always E, F, G, H, I
+// now we will check the numbers of columns for the lesson that we are looking for (date_of_the_lesson)
+// the lesson can be in a different column for each school
+// we are going to use the previous row numbers with all the interesting dates for the selected students
 function getColumnDate(sheet_subject, date_of_the_lesson, institute_unique, data_rows){
-  // assumption: the calendar data is always in the format gg/mm/aa in the google sheet
-  // assumption: the column in which the data may be are always E, F, G, H, I
-  // now we will check the numbers of columns for the lesson that we are looking for (date_of_the_lesson)
-  // the lesson can be in a different column for each school
-  // we are going to use the previous row numbers with all the interesting dates for the selected students
+
   var searchString = createDateFromFormat(date_of_the_lesson);
   var date1 = new Date(searchString);
   var number_columns = [];
+  var index_missing = [];
+  var count;
+  var abort = false;
+  var error = "";
+  var solution = "";
+
   for (var j = 0; j < data_rows.length; j++){ 
-    var data_lines = trimmingArray(sheet_subject.getRange(data_rows[j] + 1, 5, 1, 6).getValues());
+    var data_lines = trimmingArray(sheet_subject.getRange(data_rows[j], 5, 1, 6).getValues());
     data_lines = data_lines[0].split(",");
+    count = 0;
+
     for (var i = 0; i < data_lines.length; i++) {
       var date2 = new Date(data_lines[i]);
       if (date1.getTime() === date2.getTime()) {
         console.log("searchString at column: ", i + 5, " for the institute ",institute_unique[j]);
         number_columns.push(i + 5); 
+        count = 1;
         break;
       }
     }
+
+    // if no data was found, save as missing
+    if(count == 0){
+      index_missing.push(j);
+    }
+  }
+
+  if(index_missing.length > 0){
+    abort = true;
+    error = "Cannot find the right column date for all the institutes.";
+    solution = "Potrebbe essere che le date per le scuole coinvolte non siano nel formato giusto o che " +
+                "la data sia sbaglaita.\n" + "Controllare che il tipo di cella delle date " +
+                "delle seguenti scuole sia settato su data:\n";
+    for (var i = 0; i < index_missing.length; i++){
+      solution = solution + "- " + institute_unique[index_missing[i]] + "\n";
+    } 
+    solution = solution + "Potrebbe essere anche un errore dal parte del docente " + 
+              "che ha messo la data  sbagliata";          
   }
   console.log("number_columns: ", number_columns);
-  return number_columns;
+
+  return {abort: abort, error: error, solution: solution, values: number_columns};
 }
 
 function updateStudents(sheet_subject, duration, row, institute_unique, institute_row, number_columns){
