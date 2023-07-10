@@ -78,29 +78,68 @@ function onFormSubmit(e) {
         // FIX-ME checking status!!!! 
         console.log("form is valid");
 
-        // update professors' list in case the are no errors
-        // if there are no professor mentioned in the form, then the form will be aborted
-        if (professor === "Altro"){
-          console.log("professor not in the list");
-          var missing_professor_name = professor_obj["missing_professor_name"];
-          var missing_professor_surname = professor_obj["missing_professor_surname"];
+        var extra_students_obj = getExtraStudenti(e);
+        var extra_students = extra_students_obj["values"];
+
+        var extra_prof_obj = getExtraProfessorData(e);
+
+        // forth layers: security check on the entry data
+        if(extra_students_obj["abort"] === false && extra_prof_obj["abort"] === false && professor_obj["sec_abort"] === false){
+
+          console.log("Secuirty check passed");
+
+          // update professors' list in case the are no errors
+          // if there are no professor mentioned in the form, then the form will be aborted
+          if (professor === "Altro"){
+            console.log("professor not in the list");
+            var missing_professor_name = professor_obj["missing_professor_name"];
+            var missing_professor_surname = professor_obj["missing_professor_surname"];
+            
+            addMissingProfessor(sheet_subject_lesson, professor, missing_professor_name, missing_professor_surname);
+            professor = missing_professor_name + " " + missing_professor_surname;
+          }
+
+          // update professor info if they are any in the form
+          updateProfessorData(sheet_subject_lesson, professor, extra_prof_obj["codice_fiscale"], 
+          extra_prof_obj["settore_lavorativo"], extra_prof_obj["docente_esterno"], extra_prof_obj["dottorando"]);
+
+          // update the page of the students with their attendence
+          updateStudents(sheet_subject, duration, rows, institute_unique, institute_row, number_columns);
+
+          // update "Studenti Extra" page in case of extra students
+          updateExtraStudents(extra_students, sheet_extraStudents, name_of_the_course, professor,
+                               date_of_the_lesson, duration);
+
+          // update that everything is fine
+          updateState(sheet_frequency_obj, row_sheet, "", "", "#00ff00", "Ok");
+
+        }else{
           
-          addMissingProfessor(sheet_subject_lesson, professor, missing_professor_name, missing_professor_surname);
-          professor = missing_professor_name + " " + missing_professor_surname;
+          console.log("Secuirty check failed");
+
+          // elaborate message error for the security layer: entry data checking
+          var error = "";
+          var solution = "";
+
+          if(extra_students_obj["abort"] === true){
+            error = error + extra_students_obj["error"] + "\n";
+          }
+          if(extra_prof_obj["abort"] === true){
+            error = error + extra_prof_obj["error"] + "\n";
+          }
+          if(professor_obj["sec_abort"] === true){
+            error = error + professor_obj["error"] + "\n";
+          }
+
+          solution = "Controllare manualmente che simboli sono stati inseriti. In questo caso è bene notificare un" + 
+          " informatico \n per capire se c'è stato un tentativo di hacking oppure se è stato usato uno o più simboli che" + " solitamente non vengono usati. \n";
+
+          updateState(sheet_frequency_obj, row_sheet, error, solution);
         }
 
-        // update professor info if they are any in the form
-        updateProfessorData(e, sheet_subject_lesson, professor);
-
-        // update the page of the students with their attendence
-        updateStudents(sheet_subject, duration, rows, institute_unique, institute_row, number_columns);
-
-        // update "Studenti Extra" page in case of extra students
-        updateExtraStudents(e, sheet_extraStudents, name_of_the_course, professor, date_of_the_lesson, duration)
-        
       }else{
 
-        // elaborate message error for the second layer: missing form columns
+        // elaborate message error for the third layer: matching
         var error = "";
         var solution = "";
 
@@ -197,18 +236,18 @@ function onFormSubmit(e) {
 // assumption: the state is in column P (number 16), while the error in column Q (number 17)
 //             and the solutions are in column R
 // update status, error and solution columns in the "Frequenze" sheet
-function updateState(sheet_frequency_obj, row_sheet, error, solution){
+function updateState(sheet_frequency_obj, row_sheet, error, solution, color="#FF0000", text="Form aborted"){
   if(sheet_frequency_obj["abort"] !== true){
     sheet_frequency = sheet_frequency_obj["sheet"];
-    var range = sheet_frequency.getRange(row_sheet, 16, 1, 1);
-    range.setValue("Form aborted");
-    range.setBackground("#FF0000"); // set background color RED
-
-    var range = sheet_frequency.getRange(row_sheet, 17, 1, 1);
-    range.setValue(error);
+    var cell = sheet_frequency.getRange(row_sheet, 16, 1, 1);
+    cell.setValue(text);
+    cell.setBackground(color); 
+    
+    var cell = sheet_frequency.getRange(row_sheet, 17, 1, 1);
+    cell.setValue(error);
   
-    var range = sheet_frequency.getRange(row_sheet, 18, 1, 1);
-    range.setValue(solution);
+    var cell = sheet_frequency.getRange(row_sheet, 18, 1, 1);
+    cell.setValue(solution);
   }else{
     console.log("Cannot update the status, error and solution becasue the sheet \'Frequenze\' doesn't exist")
   }
@@ -304,6 +343,7 @@ function getProfessor(e){
   var abort = false;
   var error = "";
   var check = false;
+  var sec_abort = false;
 
   // in case no professor is selected from the list, then we need to retrieve his/her 
   // name and surname from the optional fields
@@ -313,7 +353,7 @@ function getProfessor(e){
     var searchString2 = "Cognome docente mancante";
     var counter = 0;
     check = true;
-    error = "check the new teacher added to the list"
+    error = "check the new teacher added to the list. \n";
 
     // check name and surname of the new professor
     for (var i = 0; i < fieldNames.length; i++){
@@ -338,6 +378,10 @@ function getProfessor(e){
       }
     }
 
+    // check if the data is not secure
+    var name_obj = validateEntry(missing_professor_name);
+    var surname_obj = validateEntry(missing_professor_surname);
+
     // if no professor is mentioned in the form, abort the form
     if(missing_professor_name === "" || missing_professor_surname === ""){
 
@@ -346,11 +390,20 @@ function getProfessor(e){
       missing_professor_surname = missing_professor_surname;
       abort = true;
       check = false;
-      error = "The professor has selected \'Altro\' on the form, but she/he didn't fill the field"+ 
-              "about the name and/or surname";
+      error = error + "The professor has selected \'Altro\' on the form, but she/he didn't fill the field"+ 
+              "about the name and/or surname.\n";
+    }
+
+    if(name_obj["abort"] === true){
+      sec_abort = true;
+      error = error + name_obj["error"] + " inside " + searchString1;
+    }
+    if(surname_obj["abort"] === true){
+      sec_abort = true;
+      error = error + surname_obj["error"] + " inside " + searchString2;
     }
   }
-  return {abort: abort, error: error, check_new_professor: check, professor: professor, missing_professor_name : missing_professor_name, missing_professor_surname: missing_professor_surname};
+  return {abort: abort, error: error, check: check, sec_abort: sec_abort, professor: professor, missing_professor_name : missing_professor_name, missing_professor_surname: missing_professor_surname};
 }
 
 // add the missing professor to the right list
@@ -380,12 +433,55 @@ function addMissingProfessor(sheet_subject_lesson, professor, name, surname){
   }
 }
 
-function updateProfessorData(e,sheet_subject_lesson, professor){
+// check entry data on the professor data
+function getExtraProfessorData(e){
 
-  // assumption: fixed name for some columns: "Nome", "Cognome", "Codice Fiscale Docente", "Settore Lavorativo Docente",
-  // "Docente Esterno" and "dottorando"
-  // update the information about codice fiscale, settore lavorativo and docente esterno if they are not already 
-  // present in the excel
+  var abort = false;
+  var error = "";
+
+  var codice_fiscale_column = "Codice Fiscale Docente";
+  var codice_fiscale = e.namedValues[codice_fiscale_column][0];
+  var codice_fiscale_obj = validateEntry(codice_fiscale);
+
+  var settore_lavorativo_column = "Settore Scientifico Docente";
+  var settore_lavorativo = e.namedValues[settore_lavorativo_column][0];
+  var settore_lavorativo_obj = validateEntry(settore_lavorativo);
+
+  var docente_esterno_column = "Docente Esterno";
+  var docente_esterno = e.namedValues[docente_esterno_column][0];
+  var docente_esterno_obj = validateEntry(docente_esterno);
+
+  var dottorando_column = "Dottorando";
+  var dottorando = e.namedValues[dottorando_column][0];
+  var dottorando_obj = validateEntry(dottorando);
+
+  if (codice_fiscale_obj["abort"]){
+    error = error + codice_fiscale_obj["error"] + " in " + codice_fiscale_column + "\n";
+    abort = true;
+  }
+  if (settore_lavorativo_obj["abort"]){
+    error = error + settore_lavorativo_obj["error"] + " in " + settore_lavorativo_column + "\n";
+    abort = true;
+  }
+  if (docente_esterno_obj["abort"]){
+    error = error + docente_esterno_obj["error"] + " in " + docente_esterno_column + "\n";
+    abort = true;
+  }
+  if (dottorando_obj["abort"]){
+    error = error + dottorando_obj["error"] + " in " + dottorando_column + "\n";
+    abort = true;
+  }
+
+  return {abort: abort, error: error, codice_fiscale: codice_fiscale, settore_lavorativo: settore_lavorativo, docente_esterno: docente_esterno, dottorando: dottorando};
+}
+
+
+// assumption: fixed name for some columns: "Nome", "Cognome", "Codice Fiscale Docente", "Settore Lavorativo Docente",
+// "Docente Esterno" and "dottorando"
+// update the information about codice fiscale, settore lavorativo and docente esterno if they are not already 
+// present in the excel
+function updateProfessorData(sheet_subject_lesson, professor, codice_fiscale, settore_lavorativo, docente_esterno, dottorando){
+
   var professors_column = trimmingArray(sheet_subject_lesson.getRange("A1:A" + sheet_subject_lesson.getLastRow()).getValues());
   var professor_row = professors_column.indexOf(professor) + 1;
 
@@ -394,32 +490,24 @@ function updateProfessorData(e,sheet_subject_lesson, professor){
     var cell = sheet_subject_lesson.getRange(professor_row, 4); 
     console.log("professor_codice_fiscale: ", cell.getValue());
     if (cell.getValue() === ""){
-      var codice_fiscale_column = "Codice Fiscale Docente";
-      var codice_fiscale = e.namedValues[codice_fiscale_column][0];
       cell.setValue(codice_fiscale); 
     }
 
     cell = sheet_subject_lesson.getRange(professor_row, 5); 
     console.log("professor_settore_lavorativo: ", cell.getValue());
     if (cell.getValue() === ""){
-      var settore_lavorativo_column = "Settore Scientifico Docente";
-      var settore_lavorativo = e.namedValues[settore_lavorativo_column][0];
       cell.setValue(settore_lavorativo); 
     }
 
     cell = sheet_subject_lesson.getRange(professor_row, 6); 
     console.log("professor_docente_esterno: ", cell.getValue());
     if (cell.getValue() === ""){
-      var docente_esterno_column = "Docente Esterno";
-      var docente_esterno = e.namedValues[docente_esterno_column][0];
       cell.setValue(docente_esterno); 
     }
 
     cell = sheet_subject_lesson.getRange(professor_row, 7); 
     console.log("professor_dottorando: ", cell.getValue());
     if (cell.getValue() === ""){
-      var dottorando_column = "Dottorando";
-      var dottorando = e.namedValues[dottorando_column][0];
       cell.setValue(dottorando); 
     }
   }
@@ -640,14 +728,22 @@ function updateStudents(sheet_subject, duration, row, institute_unique, institut
   }
 }
 
-function updateExtraStudents(e, sheet_extraStudents, name_of_the_course, professor, date_of_the_lesson, duration){
+// assumption: page for the extra students "Studenti extra"
+// get any extra student and validate the entry data
+function getExtraStudenti(e){
 
-  // Now we need to add the extra students as last row in the dedicated page
-  // assumption: page for the extra students "Studenti extra"
-  // assumption: page for the name of professor must contain the keyword "Nome e Cognome docente"
   var studenti_extra_column = "Studenti extra";
   var studenti_extra = e.namedValues[studenti_extra_column][0];
-  console.log("studenti_extra: ", studenti_extra);
+
+  var studenti_extra_obj = validateEntry(studenti_extra);
+  var error = studenti_extra_obj["error"] + " in " + studenti_extra_column + "\n";
+
+  return {abort: studenti_extra_obj["abort"], error: error, values: studenti_extra};
+}
+
+// Now we need to add the extra students as last row in the dedicated page
+// assumption: page for the name of professor must contain the keyword "Nome e Cognome docente"
+function updateExtraStudents(studenti_extra, sheet_extraStudents, name_of_the_course, professor, date_of_the_lesson, duration){
 
   if (studenti_extra.trim().length !== 0){
 
@@ -678,3 +774,24 @@ function trimmingArray(values){
     return row.toString().trim();
   });
 }
+
+function validateEntry(data){
+  var abort = false;
+  var error = "";
+
+  // Dangerous symbols you want to check for
+  var dangerousSymbols = ['<', '>', '&', '"', "'", '=','!','(',')','[',']','{','}'];
+
+  // Check if the data contains any dangerous symbols
+  for (var i = 0; i < dangerousSymbols.length; i++) {
+    if (data.includes(dangerousSymbols[i])) {
+      if( abort === false){
+        error = "The following list of banned symbols was used as data entry: ";
+      }
+      error = error + dangerousSymbols[i] + " ";
+      abort = true;
+    }
+  }
+  return {abort: abort, error: error};
+}
+
