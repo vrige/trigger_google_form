@@ -1,3 +1,4 @@
+// this function is set to be triggered when a form is received
 function onFormSubmit(e) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   var ss = SpreadsheetApp.getActiveSpreadsheet();
