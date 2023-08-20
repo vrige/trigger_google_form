@@ -46,6 +46,8 @@ function global_stitics(){
       ["Numero di studenti in totale","studenti partecipanti (>0h)","studenti che hanno superato il 70%","finanziamento (in euro):"]
     ];
     cell.setValues(values);
+    cell.setHorizontalAlignment("center");
+    cell.setFontWeight("bold");
 
   }
 }
@@ -143,7 +145,7 @@ function compute_statitics(sheet = SpreadsheetApp.getActiveSpreadsheet().getActi
         partecipanti_school = partecipanti_school + 1;
       }
 
-      // in case of hours greater than 3, it is suggested to check it manually
+      // in case of hours greater than 15, it is suggested to check it manually
       if(summ[1] === true){
         check = true;
         range = sheet.getRange(i+1,5,1,5);
@@ -247,7 +249,7 @@ function sum(list) {
   for (var i = 0; i < list.length; i++) {
     if (list[i] !== "" && isNumeric(list[i])) {
       sum = sum + parseInt(list[i]);
-      if (list[i] > 3){
+      if (list[i] > 15){
         check = true;
       }
     }
