@@ -1,4 +1,19 @@
-// this function is periodacally call by a trigger to check if the incoming-form list is empty or not
+/* 
+ This function is periodacally should be called by a trigger to check if the incoming-form list is empty or not.
+ It can be called manually by the client.
+ Basically, this function checks the sheet "Incoming Frequencies" for new filled forms. Each new filled forms is a row in the sheet. Then, it checks row-by-row the new forms. For each form it performs the follwoing routine: 
+ it copies the new form in the sheet "Frequenze" and then it performs the routine_function().
+ Before performing the first routine (if the are new filled forms), it checks that the main sheets ("Frequenze" and "Incoming Frequencies") are there. If they are not, then some error messages are displayed on the console.
+
+ Designing motivations:
+ Notice that this part cannot be automatize (as in the previous version), because these triggers are not supposed to work with files coming from external sources. 
+ And yes, all the rows in "Incoming Frequencies" come from another google sheets with an automatic trigger that sends all the new filled forms to that exact page. 
+ The motivation of this is that there is a constraint on each google form: they must correspond to a separate sheet in a google sheet file. So, two forms cannot share the same sheet. In practice, it means dealing with a lot of extra sheets that are not useful. The best solution was to put them in a file that don't even need to be accessed. 
+ Finally, there is not a trigger that can automatize this type of event: "data coming from external source", while there is a trigger for "data coming from a google form". This is why this new version is not completely automatic.
+ However, a time trigger, which calls periodically this function, can be set.
+
+ PS: there was also the possibility to make a single form for all the professors and subjects. They rejected the idea because it was complicated to create (they should have used "skip logic"), so they preferred the actual idea: make many simple forms. The good thing from their point of view is that they can just copy them and change just 4/5 fields to make the a correct new form for a complete different subject.
+*/
 function time(){
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -60,12 +75,43 @@ function time(){
   
     console.log(error)
     console.log(solution)
-
-    //updateState(sheet_frequency, row_sheet, error, solution);
   }
 }
 
-// this function is the real automatization function
+/* 
+  This function is the real automatization function. It takes as input the following fields:
+  - ss -> the current active spreadsheet;
+  - sheet_frequency -> the sheet "Frequenze";
+  - row_sheet -> the number of the row in the sheet "Frequenze";
+  - fieldNames -> the row of the new filled form;
+  The output of the function is nothing. But some update functions are called from inside this function.
+
+  The function is implemented in layers. Each layer checks that everything is regular. If it not regular, then something must be wrong and the form (the row) can be marked as "aborted"(red) or "to be checked"(yellow). In case the of "aborted", then no update is performed in the sheets. While if it is "to be checked", the updates on the sheets are done, but something must be checked manually by an operator. In case the form is regular, then the result will be "Ok"(green).
+  All these state of the new filled form are reported in the same row of the form in the sheet "Frequenze". 
+  In practice, there is a column with the status of this new filled form.
+  In case of errors or "to be checked" some helpful messages are displayed next to the status: first the type of error and then a/some possible solution/s to avoid again that error (most of the times the error is due to the polimi's operators). 
+  Tu sum up, in the row_sheet of sheet_frequency there will be three columns with a graphical and colored displayed 
+  of the results of this function. 
+
+  Some extra info on the other sheets:
+    - "Studenti extra" is a sheet in case of missing students. It means that in the list that we provided in the form, some students are missing and they need to be added. This can be automatize, but we decided to not do it, because there is some burocrazy in between that cannot automatize. Notice that in case of a missing student, the form will be yellow (if everything else is ok) and it will be reported in the error section.
+    - name_of_the_course is a sheet specific of a subject. The client must be very careful in writing it without extra spaces or spelling errors. The correct name of each course is in the sheet "Lista materie".
+    This sheet contains all the students divided by tables related to different schools. Here, for each student there are the dates for the lessons. We want to keep update this sheet by automatize the presence of each student using the filled forms sent by the professors. Notice that all these tables are created manually by polimi's operators and I decided to keep the same format with which they were familiar with. 
+    - "Riassunto "+name_of_the_course is another sheet related to the subject name_of_the_course in which there are important data that we use in the forms. Furthermore, there are info related to the teachers. A recent update function counts also the hours of work of each professor and keep track of the dates.
+
+  Going more into details: 
+    the function starts wiht the first layer:
+      by checking the existence of all the needed sheets (the sheet with the name of the course, the sheet "Riassunto "+name_of_the_course and "Studenti extra"). In case of missing of at least one of these three sheets, then the form is aborted. Notice that all this info are checked using the function getSheetByItsName() which gives back an object with some useful fields and the field "abort" is the one used to checked if the sheet should be aborted or not.
+    The second layer:
+      it checks if the replies to the qeustions in the form are avilable or not. In case there is an error, again it is aborted. The method to check if they should be aborted is more or less the same of the previous layer, but this time it uses the function getDataFromColumn(). 
+    The third layer:
+      it checks the matching between the answers in the form and the data in the sheets. In particular, it checks that the professor is in the list of professor for that subject and that each student attending the reported lesson has a column with the same date as the one reported from the professor in the form. If there are errors, again it is aborted. 
+    The forth layer:
+      it checks the extra students that the professor added manually. This field is checked also from the security point of view, because the client is free to write whatever they want. So, the answer il filter against a black list of dangerous symbols. If a forbidden symbol was used, then the form is aborted.
+
+    If the previous layers were successfully overcome, then the results can be only "Ok" or "to be checked".
+
+*/
 function routine_function(ss, sheet_frequency, row_sheet, fieldNames){
 
   // get the values of the row_sheet
@@ -752,6 +798,7 @@ function trimmingArray(values){
   });
 }
 
+// this function checks if the input uses a forbidden symbol 
 function validateEntry(data){
   var abort = false;
   var error = "";
