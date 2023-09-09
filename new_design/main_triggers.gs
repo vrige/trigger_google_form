@@ -1,13 +1,13 @@
 /* 
  This function is periodacally should be called by a trigger to check if the incoming-form list is empty or not.
  It can be called manually by the client.
- Basically, this function checks the sheet "Incoming Frequencies" for new filled forms. Each new filled forms is a row in the sheet. Then, it checks row-by-row the new forms. For each form it performs the follwoing routine: 
- it copies the new form in the sheet "Frequenze" and then it performs the routine_function().
- Before performing the first routine (if the are new filled forms), it checks that the main sheets ("Frequenze" and "Incoming Frequencies") are there. If they are not, then some error messages are displayed on the console.
+ Basically, this function checks the sheet "Frequenze In Arrivo" for new filled forms. Each new filled forms is a row in the sheet. Then, it checks row-by-row the new forms. For each form it performs the follwoing routine: 
+ it copies the new form in the sheet "Archivio Frequenze" and then it performs the routine_function().
+ Before performing the first routine (if the are new filled forms), it checks that the main sheets ("Archivio Frequenze" and "Frequenze In Arrivo") are there. If they are not, then some error messages are displayed on the console.
 
  Designing motivations:
  Notice that this part cannot be automatize (as in the previous version), because these triggers are not supposed to work with files coming from external sources. 
- And yes, all the rows in "Incoming Frequencies" come from another google sheets with an automatic trigger that sends all the new filled forms to that exact page. 
+ And yes, all the rows in "Frequenze In Arrivo" come from another google sheets with an automatic trigger that sends all the new filled forms to that exact page. 
  The motivation of this is that there is a constraint on each google form: they must correspond to a separate sheet in a google sheet file. So, two forms cannot share the same sheet. In practice, it means dealing with a lot of extra sheets that are not useful. The best solution was to put them in a file that don't even need to be accessed. 
  Finally, there is not a trigger that can automatize this type of event: "data coming from external source", while there is a trigger for "data coming from a google form". This is why this new version is not completely automatic.
  However, a time trigger, which calls periodically this function, can be set.
@@ -18,12 +18,12 @@ function time(){
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  // get the sheet incoming frequencies
-  var sheet_Incoming_freq_obj = getSheetByItsName(ss, "Incoming Frequencies");
+  // get the sheet Frequenze In Arrivo
+  var sheet_Incoming_freq_obj = getSheetByItsName(ss, "Frequenze In Arrivo");
   var sheet_Incoming_freq = sheet_Incoming_freq_obj["sheet"];
 
-  // copy the row in the destination sheet "Frequenze"
-  var sheet_frequency_obj = getSheetByItsName(ss, "Frequenze");
+  // copy the row in the destination sheet "Archivio Frequenze"
+  var sheet_frequency_obj = getSheetByItsName(ss, "Archivio Frequenze");
   var sheet_frequency = sheet_frequency_obj["sheet"];
 
   // assumption: the correct names of the columns are in the first row
@@ -43,9 +43,9 @@ function time(){
 
       for (var i = lastRow; i >= 2; i--){
 
-        // copy the target row in the "Frequenze" sheet
+        // copy the target row in the "Archivio Frequenze" sheet
         var row = updateMainTab(i, sheet_Incoming_freq, sheet_frequency);
-        console.log("row \"incomingFrequencies\": " + i + ", row Frequenze: " + row);
+        console.log("row \"Frequenze In Arrivo\": " + i + ", row Archivio Frequenze: " + row);
 
         // start the main routine on the row
         routine_function(ss, sheet_frequency, row, fieldNames);
@@ -81,27 +81,27 @@ function time(){
 /* 
   This function is the real automatization function. It takes as input the following fields:
   - ss -> the current active spreadsheet;
-  - sheet_frequency -> the sheet "Frequenze";
-  - row_sheet -> the number of the row in the sheet "Frequenze";
+  - sheet_frequency -> the sheet "Archivio Frequenze";
+  - row_sheet -> the number of the row in the sheet "Archivio Frequenze";
   - fieldNames -> the row of the new filled form;
   The output of the function is nothing. But some update functions are called from inside this function.
 
   The function is implemented in layers. Each layer checks that everything is regular. If it not regular, then something must be wrong and the form (the row) can be marked as "aborted"(red) or "to be checked"(yellow). In case the of "aborted", then no update is performed in the sheets. While if it is "to be checked", the updates on the sheets are done, but something must be checked manually by an operator. In case the form is regular, then the result will be "Ok"(green).
-  All these state of the new filled form are reported in the same row of the form in the sheet "Frequenze". 
+  All these state of the new filled form are reported in the same row of the form in the sheet "Archivio Frequenze". 
   In practice, there is a column with the status of this new filled form.
   In case of errors or "to be checked" some helpful messages are displayed next to the status: first the type of error and then a/some possible solution/s to avoid again that error (most of the times the error is due to the polimi's operators). 
   Tu sum up, in the row_sheet of sheet_frequency there will be three columns with a graphical and colored displayed 
   of the results of this function. 
 
   Some extra info on the other sheets:
-    - "Studenti extra" is a sheet in case of missing students. It means that in the list that we provided in the form, some students are missing and they need to be added. This can be automatize, but we decided to not do it, because there is some burocrazy in between that cannot automatize. Notice that in case of a missing student, the form will be yellow (if everything else is ok) and it will be reported in the error section.
-    - name_of_the_course is a sheet specific of a subject. The client must be very careful in writing it without extra spaces or spelling errors. The correct name of each course is in the sheet "Lista materie".
+    - "Studenti Extra" is a sheet in case of missing students. It means that in the list that we provided in the form, some students are missing and they need to be added. This can be automatize, but we decided to not do it, because there is some burocrazy in between that cannot automatize. Notice that in case of a missing student, the form will be yellow (if everything else is ok) and it will be reported in the error section.
+    - name_of_the_course is a sheet specific of a subject. The client must be very careful in writing it without extra spaces or spelling errors. The correct name of each course is in the sheet "Lista Materie".
     This sheet contains all the students divided by tables related to different schools. Here, for each student there are the dates for the lessons. We want to keep update this sheet by automatize the presence of each student using the filled forms sent by the professors. Notice that all these tables are created manually by polimi's operators and I decided to keep the same format with which they were familiar with. 
     - "Riassunto "+name_of_the_course is another sheet related to the subject name_of_the_course in which there are important data that we use in the forms. Furthermore, there are info related to the teachers. A recent update function counts also the hours of work of each professor and keep track of the dates.
 
   Going more into details: 
     the function starts wiht the first layer:
-      by checking the existence of all the needed sheets (the sheet with the name of the course, the sheet "Riassunto "+name_of_the_course and "Studenti extra"). In case of missing of at least one of these three sheets, then the form is aborted. Notice that all this info are checked using the function getSheetByItsName() which gives back an object with some useful fields and the field "abort" is the one used to checked if the sheet should be aborted or not.
+      by checking the existence of all the needed sheets (the sheet with the name of the course, the sheet "Riassunto "+name_of_the_course and "Studenti Extra"). In case of missing of at least one of these three sheets, then the form is aborted. Notice that all this info are checked using the function getSheetByItsName() which gives back an object with some useful fields and the field "abort" is the one used to checked if the sheet should be aborted or not.
     The second layer:
       it checks if the replies to the qeustions in the form are avilable or not. In case there is an error, again it is aborted. The method to check if they should be aborted is more or less the same of the previous layer, but this time it uses the function getDataFromColumn(). 
     The third layer:
@@ -129,12 +129,12 @@ function routine_function(ss, sheet_frequency, row_sheet, fieldNames){
   var sheet_subject_lesson_obj = getSheetByItsName(ss, subject_lessons_page);
   var sheet_subject_lesson = sheet_subject_lesson_obj["sheet"];
 
-  // get the page for "Studenti extra"
-  var sheet_extraStudents_obj = getSheetByItsName(ss, "Studenti extra");
+  // get the page for "Studenti Extra"
+  var sheet_extraStudents_obj = getSheetByItsName(ss, "Studenti Extra");
   var sheet_extraStudents = sheet_extraStudents_obj["sheet"];
 
   // first layer of error handling: checking that the useful following pages exist:
-  // "Studenti extra", name_of_the_course, "Riassunto lezioni " + name_of_the_course
+  // "Studenti Extra", name_of_the_course, "Riassunto lezioni " + name_of_the_course
   if( sheet_subject_obj["abort"] === false && sheet_subject_lesson_obj["abort"] === false && 
     sheet_extraStudents_obj["abort"] === false){
     
@@ -152,19 +152,21 @@ function routine_function(ss, sheet_frequency, row_sheet, fieldNames){
     var duration_obj = getDataFromColumn(e, fieldNames, "Durata della lezione");
     var duration = duration_obj["values"];
 
-    // get data from the column "Nessuno studente è presente"
-    var no_students_obj = getDataFromColumn(e, fieldNames, "Nessuno studente è presente");
+    // get data from the column "Almeno uno studente è presente"
+    var no_students_obj = getDataFromColumn(e, fieldNames, "Almeno uno studente è presente");
     var no_students = no_students_obj["values"];
 
-    // if the professor has selected the option "Sì" on "Nessuno studente è presente"
+    // if the professor has selected the option "No" on "Almeno uno studente è presente"
     // then it is possible to avoid the check on the student column
-    console.log("nessuno studente è presente: ", no_students)
+    console.log("Almeno uno studente è presente: ", no_students)
 
     // get the list of students 
-    var names_obj = {values: [], abort: false, error: "", name: "Nessuno studente è presente",check: true};
+    // Notice that there was an error if the list was empty, so that's why it was useful to introduce a check
+    // if there is a student in the list
+    var names_obj = {values: [], abort: false, error: "", name: "Almeno uno studente è presente",check: true};
     var names = names_obj["values"];
-    if (no_students === "No"){
-      names_obj = getDataFromColumn(e, fieldNames, "Studenti", "Studenti extra");
+    if (no_students === "Sì"){
+      names_obj = getDataFromColumn(e, fieldNames, "Studenti", "Studenti Extra");
       names = names_obj["values"];
     }
 
@@ -308,7 +310,7 @@ function routine_function(ss, sheet_frequency, row_sheet, fieldNames){
       if(names_obj["abort"] === true){
         error = error + names_obj["error"] + "\n";
         solution = solution + "Controllare che esista una colonna del form che contenga la parola \'" + 
-        names_obj["name"] + "\' e che il nome sia corretto.\n";
+        names_obj["name"] + "\' e che il nome sia corretto.\n"+ "Potrebbe anche essere che il professore abbia selezionato \'Sì\' alla domanda \'Almeno uno studente\n è presente\' senza selezionare alcuno studente dalla lista. In questo caso potrebbe essere che in classe ci\n fossero degli studenti che però non sono nella lista, quindi è probabile che la lista studenti selezionata\n tramite formRanger sia quella sbagliata. Ricontrollare il form per piacere.\n";
       }
       if(date_of_the_lesson_obj["abort"] === true){
         error = error + date_of_the_lesson_obj["error"] + "\n";
@@ -321,9 +323,9 @@ function routine_function(ss, sheet_frequency, row_sheet, fieldNames){
       }
       if(no_students_obj["abort"] === true){
         error = error + no_students_obj["error"] + "\n";
-        solution = solution + "Controllare che esista una colonna del form che contenga la parola \'" + no_students_obj["name"] + "\'  e che il nome sia corretto.\n";
+        solution = solution + "Controllare che esista una colonna del form che contenga la parola \'" + no_students_obj["name"] + "\'  e che il nome sia corretto.\n\n";
       }
-      solution = solution + "Per controllare che il nome sia correto andare sulla corrispondente form e controllare \n" + "che vi sia una domanda con la/e parola/e chiave/i precedentemente specificata/e.";
+      solution = solution + "\nPer controllare che il nome sia correto andare sulla corrispondente form e controllare \n" + "che vi sia una domanda con la/e parola/e chiave/i precedentemente specificata/e.";
     
       console.log(error)
       console.log(solution)
@@ -673,11 +675,11 @@ function getColumnDate(sheet_subject, date_of_the_lesson, institute_unique, data
   return {abort: abort, error: error, solution: solution, values: number_columns};
 }
 
-// assumption: page for the extra students "Studenti extra"
+// assumption: page for the extra students "Studenti Extra"
 // get any extra student and validate the entry data
 function getExtraStudenti(e, fieldNames){
 
-  var studenti_extra_column = "Studenti extra";
+  var studenti_extra_column = "Studenti Extra";
   var column = fieldNames.indexOf(studenti_extra_column);
   var studenti_extra = e[column];
   console.log("student_extra: ", studenti_extra);
@@ -735,17 +737,24 @@ function updateExtraStudents(studenti_extra, sheet_extraStudents, name_of_the_co
 function updateProfessor(sheet_subject_lesson, prof_rows, duration, date_of_the_lesson){
 
   var date_lesson = formatDate(date_of_the_lesson);
+  var new_duration = parseInt((duration * 60)/prof_rows.length);
 
   for (var j = 0; j < prof_rows.length; j++){
-    var cell = sheet_subject_lesson.getRange(prof_rows[j],2,1,2);
+    var cell = sheet_subject_lesson.getRange(prof_rows[j],2,1,3);
     var data_values = cell.getValues()[0];
 
     // if the first value is not a number, make a zero
     if (isNaN(data_values[0]) || data_values[0] === ""){
       data_values[0] = 0;  
     }
+
+    // notice that the new duration is computed as duration/(number_of_professors)
+    var tot_minutes = parseInt(data_values[0]) + new_duration; 
+    var ore = parseInt(tot_minutes / 60);
+    var minutes = (tot_minutes % 60);
+  
     var values = [
-      [parseInt(data_values[0]) + duration, data_values[1] + "\n " + date_lesson + " -- " + duration + "h"]
+      [tot_minutes, ore.toString() + "." + minutes.toString(),data_values[2] + "\n " + date_lesson + " -- " + duration + "h"]
     ];
     console.log("values: ", values);
     cell.setValues(values);
