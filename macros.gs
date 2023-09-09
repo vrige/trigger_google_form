@@ -1,8 +1,8 @@
-// function to call to compute all the statistics of the sheets in the list of "Lista materie"
+// function to call to compute all the statistics of the sheets in the list of "Lista Materie"
 function global_stitics(){
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var main_subject_sheet_obj = getSheetByItsName(ss, "Lista materie");
+  var main_subject_sheet_obj = getSheetByItsName(ss, "Lista Materie");
   var main_subject_sheet = main_subject_sheet_obj["sheet"];
 
   var total_sum_students = 0;
@@ -99,6 +99,9 @@ function compute_statitics(sheet = SpreadsheetApp.getActiveSpreadsheet().getActi
 
   var school_lines = [];
 
+  // columns with the new data
+  var col_new_data = [11,12,13,14,17,18,19,20];
+
   for (var i = 0; i < students.length; i++) {
     
     if (students[i][0] !== "") {
@@ -107,9 +110,9 @@ function compute_statitics(sheet = SpreadsheetApp.getActiveSpreadsheet().getActi
       range.setBackground("#FFFFFF")
       range = trimmingArray(range.getValues())[0].split(",");
       var summ = sum(range);
-      var cell = sheet.getRange(i+1,11,1,1);
-      var finanziamento = sheet.getRange(i+1,12,1,1);
-      var certificate = sheet.getRange(i+1,13,1,1);
+      var cell = sheet.getRange(i+1,col_new_data[0],1,1);
+      var finanziamento = sheet.getRange(i+1,col_new_data[1],1,1);
+      var certificate = sheet.getRange(i+1,col_new_data[2],1,1);
       
       cell.setValue(summ[0]);
       cell.setBorder(true, true, true, true, null, null, "#000000", SpreadsheetApp.BorderStyle.SOLID);
@@ -170,7 +173,7 @@ function compute_statitics(sheet = SpreadsheetApp.getActiveSpreadsheet().getActi
       if (i != students.length - 1){
         school_lines.push(i+1);
 
-        var cell = sheet.getRange(i+1,11,1,3);
+        var cell = sheet.getRange(i+1,col_new_data[0],1,3);
         var values = [
           ["Ore totali", "Finanziamento", "certificato"]
         ];
@@ -189,7 +192,7 @@ function compute_statitics(sheet = SpreadsheetApp.getActiveSpreadsheet().getActi
 
   // save some side statistics for each school
   for (var i = 0; i < school_lines.length; i++) {
-    var cell = sheet.getRange(school_lines[i],14,8,1);
+    var cell = sheet.getRange(school_lines[i],col_new_data[3],8,1);
     var values = [
       ["Numero studenti iscritti"],
       [save_counting_school[i+1]],
@@ -211,7 +214,7 @@ function compute_statitics(sheet = SpreadsheetApp.getActiveSpreadsheet().getActi
   }
 
   // save the total number of students in the sheet
-  var cell = sheet.getRange(2,17,1,4);
+  var cell = sheet.getRange(2,col_new_data[4],1,4);
   var values = [
     ["Numero di studenti in totale","studenti partecipanti (>0h)","studenti che hanno superato il 70%","finanziamento (in euro):"]
   ];
@@ -220,7 +223,7 @@ function compute_statitics(sheet = SpreadsheetApp.getActiveSpreadsheet().getActi
   cell.setHorizontalAlignment("center");
   cell.setFontWeight("bold");
 
-  var cell = sheet.getRange(3,17,1,4);
+  var cell = sheet.getRange(3,col_new_data[4],1,4);
   var values = [
     [total_sum_count_students,total_sum_partecipanti,total_sum_count_students_with_70,total_sum_finanziamento]
   ];
@@ -229,7 +232,7 @@ function compute_statitics(sheet = SpreadsheetApp.getActiveSpreadsheet().getActi
   cell.setHorizontalAlignment("center");
   cell.setFontWeight("bold");
 
-  var cell = sheet.getRange(5,17,2,2);
+  var cell = sheet.getRange(5,col_new_data[4],2,2);
   var values = [
     ["C'è qualche riga da controllare manualmente?", check ? "Sì" : "No"],
     ["Prova a Controllare le seguenti righe:", check ? line_to_check : ""]
@@ -238,18 +241,22 @@ function compute_statitics(sheet = SpreadsheetApp.getActiveSpreadsheet().getActi
   cell.setBorder(true, true, true, true, null, null, "#000000", SpreadsheetApp.BorderStyle.SOLID);
   cell.setHorizontalAlignment("center");
   cell.setFontWeight("bold");
+
+  // resize the columns with the new data
+  sheet.autoResizeColumns(col_new_data[0], col_new_data[col_new_data.length - 1] - col_new_data[0] + 1);
   
   return [total_sum_count_students,total_sum_partecipanti,total_sum_count_students_with_70,total_sum_finanziamento];
 }
 
 // sum all the value in the list, but if it is empty count it as zero
+// if the cell is greater than 15 hours, then make it to be checked
 function sum(list) {
   var sum = 0;
   var check = false;
   for (var i = 0; i < list.length; i++) {
     if (list[i] !== "" && isNumeric(list[i])) {
       sum = sum + parseInt(list[i]);
-      if (list[i] > 15){
+      if (list[i] > 15 || sum > 15){
         check = true;
       }
     }
