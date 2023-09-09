@@ -9,7 +9,7 @@ function transferData(e) {
   var destinationSpreadsheet = SpreadsheetApp.openById('ID_of_the_sheet_which_is_secret');
   
   // Open the respective sheets within the spreadsheets
-  var destinationSheet = destinationSpreadsheet.getSheetByName('Incoming Frequencies');
+  var destinationSheet = destinationSpreadsheet.getSheetByName('Frequenze In Arrivo');
 
   var lastRow = destinationSheet.getLastRow();
   
